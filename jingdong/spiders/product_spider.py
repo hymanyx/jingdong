@@ -82,7 +82,6 @@ class ProductSpider(scrapy.Spider):
             }
             self.logger.info("make request for category %s - %s, %s" % (category_code, category_name, url))
             yield scrapy.Request(url=url, meta=meta, callback=self.parse_list_page)
-            break
 
     def parse_list_page(self, response):
         """ 解析List页
