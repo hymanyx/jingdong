@@ -58,12 +58,9 @@ class ProductSpider(scrapy.Spider):
     }
 
     def start_requests(self):
-        """ 为每个类目构造List页请求
-        :param response: start_urls中的url所代表的页面, 在这里对其不做任何处理. 使用start_urls的作用是让spider能够进入parse函数执行我们的代码.
-        """
+        """为每个类目构造List页请求"""
         categories = get_categories()
         for category_code, category_name in categories.iteritems():
-            category_code = '652-828-837'
             url = 'http://list.jd.com/list.html?cat=' + category_code
             meta = {
                 'category_code': category_code,
