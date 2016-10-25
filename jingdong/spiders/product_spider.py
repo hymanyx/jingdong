@@ -60,6 +60,7 @@ class ProductSpider(scrapy.Spider):
     def start_requests(self):
         """为每个类目构造List页请求"""
         categories = get_categories()
+        self.logger.info('get %d categories from mysql' % len(categories))
         for category_code, category_name in categories.iteritems():
             url = 'http://list.jd.com/list.html?cat=' + category_code
             meta = {
