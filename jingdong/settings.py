@@ -93,8 +93,8 @@ NEWSPIDER_MODULE = 'jingdong.spiders'
 # FAILURE_FILE = './failure_20161008.json'
 
 # Logging
-LOG_LEVEL = 'DEBUG'
-LOG_FILE = '/tmp/cps_scrapy.log.20161019'
+LOG_LEVEL = 'INFO'
+# LOG_FILE = '/tmp/log_scrapy.log.20161020'
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html

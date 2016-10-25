@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import ast
-import json
 import scrapy
+import subprocess
+import datetime
+import glob
+import json
 from jingdong.items import JdProductItem
 from itertools import islice
 
@@ -16,206 +18,167 @@ def split_dict(my_dict, max_size_of_sub_dict):
     for i in xrange(0, len(my_dict), max_size_of_sub_dict):
         yield {key: my_dict[key] for key in islice(it, max_size_of_sub_dict)}
 
-def get_spids(date):
-    """Get history log, and get spids from it
+
+def get_spids():
+    """获取前一天ttk_shown日志中所有未采集的京东商品spid
     """
-    import subprocess
-    import datetime
-    import glob
-    import json
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    spids = set()
+    for i in xrange(24):
+        # 下载HDFS上的ttk_shown日志到本地
+        log_file = '/logs/flume-logs/ttk/ttk_shown/' + yesterday + '/' + yesterday + '-{0:02d}'.format(
+            i) + '/ttk_shown.log.*.log'
+        subprocess.check_call(['hdfs', 'dfs', '-get', log_file, '/tmp/ttk_show'])
 
-class ProductSpider(scrapy.Spider):
+        # 获取下载到本地的ttk_shown的文件路径
+        files = glob.glob('/tmp/ttk_show/ttk_shown.log.*.log')
+
+        # 在日志中获取未采集的京东商品spid
+        print "current ttk_shown log: ", log_file
+        with open(files[0], 'r') as fin:
+            for line in fin:
+                log = {}
+                try:
+                    log = json.loads(line.split('\t')[1])
+                    if (log['website'] == 'jd.com') and (log['stored'] == 0) and (log['spid'].isdigit()):
+                        if log['spid'] not in spids:
+                            spids.add(log['spid'])
+                            yield log['spid']
+                except Exception as e:
+                    print e, log_file, line
+
+        # 删除下载到本地的ttk_shown日志
+        subprocess.check_call(['/bin/rm', '-rf', files[0]])
+
+
+class LogSpider(scrapy.Spider):
     name = "log_spider"
-    start_urls = ["http://www.jd.com/allSort.aspx"]
+    start_urls = []
 
-    def parse(self, response):
-        """ 为每个类目构造List页请求
-        :param response: start_urls中的url所代表的页面, 在这里对其不做任何处理. 使用start_urls的作用是让spider能够进入parse函数执行我们的代码.
+    custom_settings = {
+        # 'DOWNLOAD_DELAY': 0.001,
+        'ROBOTSTXT_OBEY': False,
+        'DNS_TIMEOUT': 10,
+        'DOWNLOAD_TIMEOUT': 60,
+        'CONCURRENT_REQUESTS': 32,
+        'COOKIES_ENABLED': False,
+        'COOKIES_DEBUG': False,
+        'RETRY_TIMES': 3,
+        'RETRY_HTTP_CODES': [500, 503, 504, 400, 403, 404, 408, 111],
+        'DOWNLOADER_MIDDLEWARES': {
+            'scrapy.downloadermiddlewares.retry.RetryMiddleware': 90,
+            'jingdong.middlewares.RandomUserAgentMiddleware': 400,
+            'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
+            'jingdong.middlewares.RandomHttpProxyMiddleware': 100,
+            'scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware': 110,
+        },
+        'ITEM_PIPELINES': {
+            'jingdong.pipelines.JdLogPipeline': 300,
+        },
+        'MONGO_URI': '199.155.122.197:27017',
+        'MONGO_DATABASE': 'jingdong',
+        'MONGO_COLLECTION': 'log_product_info_' + (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y%m%d"),
+    }
+
+    def start_requests(self):
+        """重载父类的start_request方法"""
+        num = 0
+        for spid in get_spids():
+            num += 1
+            product_item = JdProductItem()
+            product_item['spid'] = spid
+            url = 'https://item.jd.com/{0:s}.html'.format(spid)
+            meta = {'is_proxy': True, 'product_item': product_item}
+            yield scrapy.Request(url=url, meta=meta, callback=self.parse_detail_page)
+        self.logger.info('get %s spids from ttk_shown logs' % num)
+
+    def parse_detail_page(self, response):
+        """解析详情页
+        :param response: parse函数中url所表示的页面
         """
-        categories = get_categories()
-        for category in categories:
-            url = 'http://list.jd.com/list.html?cat=' + category  # 类目入口页
-            meta = {
-                'request-type': 'list',                           # 请求类型, middleware模块通过请求类型来决定是否使用代理
-                'cid': category                                   # 三级类目
-            }
-            yield scrapy.Request(url=url, meta=meta, callback=self.parse_list)
-
-    def parse_list(self, response):
-        """ 解析List页
-        :param response: 获取到的List页的http响应
-        """
-
-        # (在List页的html文件中)获取变量slaveWareList的值, 并将其转换成dict
-        start = response.body.find("var slaveWareList =") + len("var slaveWareList =")  # 定位变量slaveWareList内容的起始位置
-        end = response.body.find("var aosList =")                                       # 定位变量slaveWareList内容的终止位置
-        slave_ware_list = response.body[start:end].replace('\n', '').replace(' ', '')   # 定位到的变量slaveWareList内容的结尾有多余的空格和回车符, 故去掉多余的空格和回车符
-        slave_ware_list = slave_ware_list[:-1]                                          # 变量slaveWareList内容的结尾还有一个分号(;), 去掉这个分号
-        slave_products_map = dict()
+        # 从页面中解析出一个商品的部分信息
+        product_item = response.meta['product_item']
         try:
-            slave_products_map = ast.literal_eval(slave_ware_list)                      # 将变量slaveWareList内容转换成dict
-        except Exception, e:
-            self.logger.error("can not convert string to dict %s, %s" % (e, response.url))
-            return
+            # cid
+            cid1 = response.xpath('/html/body/div[4]/div/div[1]/div[5]/a/@href').extract()
+            cid2 = response.xpath('//*[@id="root-nav"]/div/div/span[1]/a[2]/@href').extract()
+            product_item['cid'] = (cid1[0].split('=')[-1] if cid1 else cid2[0].split('=')[-1])
 
-        # (在List页的html文件中)通过xPath定位所有商品的html描述
-        selectors = response.xpath('//*[@id="plist"]/ul/li[*]/div')
-        if not selectors:
-            self.logger.error("can not navigate products item in list page: %s" % response.url)
-            return
+            # nick
+            nick1 = response.xpath('/html/body/div[4]/div/div[2]/div[1]/div/em/text()').extract()
+            nick2 = response.xpath('//*[@id="popbox"]/div/div[1]/h3/a/@title').extract()
+            nick3 = response.xpath('//*[@id="extInfo"]/div[2]/em/text()').extract()
+            nick = (nick1 if nick1 else nick2)
+            nick = (nick if nick else nick3)
+            product_item['nick'] = nick[0]
 
-        # 每个商品的html描述还可能进行更细的拆分
-        product_selectors = []                                # 一个List页中所有商品的selector
-        for selector in selectors:
-            div_type = selector.xpath('@class').extract()[0]  # div_type的值为'gl-i-wrap'或'gl-i-wrap j-sku-item'
-            if 'gl-i-wrap j-sku-item' == div_type:            # div_type的值为gl-i-wrap j-sku-item', 不能再拆分了
-                product_selectors.append(selector)
-            elif 'gl-i-wrap' == div_type:                     # div_type的值为'gl-i-wrap j-sku-item', 继续拆分更多的商品html描述
-                selectors_ = selector.xpath('div/div[2]/div')
-                for selector_ in selectors_:
-                    product_selectors.append(selector_)
-            else:
-                self.logger.error("can not handle new type: %s, %s" % (div_type, response.url))
+            # title
+            title1 = response.xpath('/html/body/div[5]/div/div[2]/div[1]/text()').extract()
+            title2 = response.xpath('//*[@id="name"]/h1/text()').extract()
+            product_item['title'] = (title1[0] if title1 else title2[0])
 
-        # 从所有商品对应的html描述中解析出商品部分信息
-        product_items_dict = dict()  # key时spid, value是解析出的商品信息
-        for product_selector in product_selectors:
-            product_items = self.parse_item(selector=product_selector, list_url=response.url, cid=response.meta['cid'], slave_products_map=slave_products_map)
-            for product_item in product_items:
-                if product_item:
-                    spid = product_item['spid']
-                    product_items_dict[spid] = product_item
+            # imageUrl
+            imageUrl1 = response.xpath('//*[@id="spec-list"]/div/ul/li[1]/img/@data-url').extract()
+            imageUrl2 = response.xpath('//*[@id="spec-list"]/ul/li[1]/img/@data-url').extract()
+            imageUrl = (imageUrl1[0] if imageUrl1 else imageUrl2[0])
+            product_item['imageUrl'] = 'http://img13.360buyimg.com/n1/' + imageUrl
 
-        # 够造商品价格链接, 并获取价格(需要注意的是,每次最多只能获取100个商品的价格,故我在这里分割了product_items_dict)
-        for sub_product_items_dict in split_dict(product_items_dict, 100):
-            price_url = 'http://p.3.cn/prices/mgets?type=1&skuIds='
-            for spid in sub_product_items_dict.keys():
-                price_url = price_url + 'J_' + spid + ','
-            meta = {'request-type': 'price', 'product_items_dict': sub_product_items_dict, 'product_items_num': len(sub_product_items_dict)}
+            # url, website
+            product_item['url'] = response.url
+            product_item['website'] = 'jd.com'
+
+            price_url = 'http://p.3.cn/prices/mgets?type=1&skuIds=' + 'J_' + product_item['spid']
+            meta = {'is_proxy': True, 'product_item': product_item}
             yield scrapy.Request(url=price_url, meta=meta, callback=self.parse_price_and_comment)
-
-        # 够造获取下一个List页的链接, 并获取下一个List页
-        next_page = response.xpath('//*[@id="J_bottomPage"]/span[1]/a[10]/@href').extract()
-        if next_page:
-            next_page = "http://list.jd.com" + next_page[0]
-            yield scrapy.Request(url=next_page, meta=response.meta, callback=self.parse_list)
-        else:
-            self.logger.error("can not get next page of page %s", response.url)
-
-    def parse_item(self, selector, list_url, cid, slave_products_map):
-        """ 解析List页中的一个selector(在List页的html文件中通过xPath定位到的商品描述)对应的主商品和slave商品
-        :param selector: 在List页中定位到的一个商品html描述
-        :param list_url: selector中商品所属的List页，用于日志输出调试
-        :param cid: List页中所有商品的类目号
-        :param slave_products_map: 从List页中解析出的所有slave商品
-        """
-        product_items = []  # 元素类型为JdProductItem, 表示一个selector中解析出的所有商品(包括主商品和slave商品)
-
-        # 解析出主商品
-        main_product_item = JdProductItem()
-        try:
-            # 从页面中解析主商品信息
-            spid = selector.xpath('@data-sku').extract()
-            title = selector.xpath('div[@class="p-name"]/a/em/text()').extract()
-            url = selector.xpath('div[@class="p-name"]/a/@href').extract()
-            nick = selector.xpath('div[@class="p-shop"]/@data-shop_name').extract()
-            nick = (nick if nick else ['京东自营'.decode('utf-8')])
-            imageUrl1 = selector.xpath('div[@class="p-img"]/a/img/@src').extract()
-            imageUrl2 = selector.xpath('div[@class="p-img"]/a/img/@data-lazy-img').extract()
-            imageUrl = (imageUrl1 if imageUrl1 else imageUrl2)
-
-            # 构造商品主商品item
-            main_product_item['cid'] = cid
-            main_product_item['spid'] = spid[0]
-            main_product_item['title'] = title[0]
-            main_product_item['url'] = url[0]
-            main_product_item['imageUrl'] = imageUrl[0]
-            main_product_item['nick'] = nick[0]
-            main_product_item['website'] = 'jd.com'
-        except Exception as e:
-            self.logger.error("parse product item error in list page: %s, %s, %s" % (list_url, e, main_product_item))
-            return None
-        product_items.append(main_product_item)
-
-        # 解析出主商品的所有slave商品
-        if int(spid) in slave_products_map.keys():
-            for slave_products in slave_products_map[int(spid)]:
-                for (slave_spid, slave_product) in slave_products.items():
-                    slave_product_item = JdProductItem()
-                    slave_product_item['cid'] = cid
-                    slave_product_item['spid'] = slave_spid
-                    slave_product_item['title'] = (slave_product['name'] if slave_product['name'] else main_product_item['title'])
-                    slave_product_item['url'] = '//item.jd.com/' + slave_spid + '.html'
-                    slave_product_item['imageUrl'] = '//img14.360buyimg.com/n7/' + slave_product['imageUrl']
-                    slave_product_item['nick'] = main_product_item['nick']
-                    slave_product_item['website'] = 'jd.com'
-                    product_items.append(slave_product_item)
-        else:
-            # self.logger.error("product %s is not in slave_products_map %s" % (spid, list_url))
-            pass
-
-        return product_items
+        except Exception, e:
+            self.logger.error("parse product %s's detail page error: %s, %s, %s" % (product_item['spid'], e, response.url, product_item))
 
     def parse_price_and_comment(self, response):
-        """解析评论及价格
-        :param response: parse_list函数中的price_url的响应
+        """解析价格, 并构造获取评论的请求
+        :param response: parse函数中的price_url的响应
         """
-
-        product_items_dict = response.meta['product_items_dict']
-        product_items_num = response.meta['product_items_num']
-
         # 解析价格
-        prices = json.loads(response.body)
-        if len(prices) != product_items_num:
-            self.logger.error("get product prices error, we should get %d, but actually get %d" % (product_items_num, len(prices)))
-        else:
-            for price in prices:
-                spid = price['id'].split('_')[1]                # 京东商品id
-                promotion_price = int(float(price['p']) * 100)  # 促销价
-                original_price = int(float(price['m']) * 100)   # 原价
+        product_item = response.meta['product_item']
+        try:
+            prices = json.loads(response.body)
+            if len(prices) != 1:
+                self.logger.error("get product %s's prices error, we should get %d, but actually get %d" % (product_item['spid'], 1, len(prices)))
+            else:
+                promotion_price = int(float(prices[0]['p']) * 100)  # 促销价
+                original_price = int(float(prices[0]['m']) * 100)  # 原价
                 # 价格过滤
                 if (0 >= promotion_price) or (0 >= original_price):
                     self.logger.error("product %s's price error: promotion price (%s), original price(%s)" % (
-                    spid, promotion_price, original_price))
-                    product_items_dict.pop(spid)                # 价格错误一般由下架引起,下架商品直接删除,没必要获取其评论
+                        product_item['spid'], promotion_price, original_price))
                 else:
-                    product_items_dict[spid]['promoPrice'] = promotion_price
-                    product_items_dict[spid]['price'] = original_price
+                    product_item['promoPrice'] = promotion_price
+                    product_item['price'] = original_price
 
-        # 构造商品评论链接, 获取评论并在parse_comment中解析
-        comment_url = 'http://club.jd.com/comment/productCommentSummaries.action?my=pinglun&referenceIds='
-        for spid in product_items_dict.keys():
-            comment_url = comment_url + spid + ','
-        meta = {'request-type': 'comment', 'product_items_dict': product_items_dict, 'product_items_num': len(product_items_dict)}
-        yield scrapy.Request(url=comment_url, meta=meta, callback=self.parse_comment)
+                    comment_url = 'http://club.jd.com/comment/productCommentSummaries.action?my=pinglun&referenceIds=' + \
+                                  product_item['spid']
+                    meta = {'is_proxy': True, 'product_item': product_item}
+                    yield scrapy.Request(url=comment_url, meta=meta, callback=self.parse_comment)
+        except Exception, e:
+            self.logger.error("can not get %s's price, %s, %s, %s" % (product_item['spid'], e, response.url, response.body))
 
     def parse_comment(self, response):
         """解析评论
         :param response: parse_price_and_comment函数中comment_url的响应
         """
-        product_items_dict = response.meta['product_items_dict']
-        product_items_num = response.meta['product_items_num']
-
-        # 解析评论
-        comments = json.loads(response.body.decode('gbk'))
-        comments = comments['CommentsCount']
-        if len(comments) != product_items_num:
-            self.logger.error(
-                "get product comments error, we should get %d, but actually get %d" % (product_items_num, len(comments)))
-        else:
-            for comment in comments:
-                spid = str(comment['SkuId'])                         # 京东商品id
-                comment_count = comment['CommentCount']              # 商品评论数
-                good_rate = str(comment['GoodRateShow']) + '%'       # 好评率
-                general_rate = str(comment['GeneralRateShow']) + '%' # 中评率
-                poor_rate = str(comment['PoorRateShow']) + '%'       # 差评率
-                rate = {'good': good_rate, 'general': general_rate, 'poor': poor_rate}
-
-                product_items_dict[spid]['volume'] = comment_count
-                product_items_dict[spid]['feedbackCount'] = comment_count
-                product_items_dict[spid]['rate'] = rate
-
-        # yield所有product_item
-        for product_item in product_items_dict.values():
-            # self.logger.info("%s" % product_item)
-            yield product_item
+        product_item = response.meta['product_item']
+        try:
+            comments = json.loads(response.body.decode('gbk'))
+            comments = comments['CommentsCount']
+            if len(comments) != 1:
+                self.logger.error("get product %s's comments error, we should get %d, but actually get %d" % (product_item['spid'], 1, len(comments)))
+            else:
+                product_item['volume'] = comments[0]['CommentCount']
+                product_item['feedbackCount'] = comments[0]['CommentCount']
+                product_item['rate'] = {
+                    'good': str(comments[0]['GoodRateShow']) + '%',
+                    'general': str(comments[0]['GeneralRateShow']) + '%',
+                    'poor': str(comments[0]['PoorRateShow']) + '%'
+                }
+                yield product_item
+        except Exception, e:
+            self.logger.error("can not get %s's comment, %s, %s, %s" % (product_item['spid'], e, response.url, response.body))

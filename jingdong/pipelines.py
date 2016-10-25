@@ -66,6 +66,50 @@ class JingdongPipeline(object):
         return item
 
 
+class JdLogPipeline(object):
+    """将JdProductItem类型的item插入mongo库"""
+
+    def __init__(self, mongo_uri, mongo_db, mongo_collection):
+        self.client = pymongo.MongoClient(mongo_uri)
+        self.collection = self.client[mongo_db][mongo_collection]
+        self.product_items = []
+        self.total_items = 0
+        self.item_filter = ScalableBloomFilter(mode=ScalableBloomFilter.LARGE_SET_GROWTH)
+        self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(
+            mongo_uri=crawler.settings.get('MONGO_URI'),
+            mongo_db=crawler.settings.get('MONGO_DATABASE'),
+            mongo_collection=crawler.settings.get('MONGO_COLLECTION'),
+        )
+
+    def close_spider(self, spider):
+        if self.product_items:
+            self.total_items += len(self.product_items)
+            self.collection.insert_many(self.product_items)
+            self.product_items = []
+            self.logger.info("Eventually put %d products into mongodb " % self.total_items)
+        self.client.close()
+
+    def process_item(self, item, spider):
+        spid = int(item['spid'])
+        if self.item_filter.add(spid):
+            raise DropItem("Duplicated product item: %d" % spid)
+        else:
+            if len(self.product_items) >= 100:
+                # 收集到100个item, 则批量插入
+                self.total_items += len(self.product_items)
+                self.collection.insert_many(self.product_items)
+                self.product_items = []
+                self.logger.info("Put %d products into mongodb" % self.total_items)
+            else:
+                # 未收集到100个item, 则收集item准备批量插入mongo
+                self.product_items.append(dict(item))
+        return item
+
+
 class JdCPSPipeline(object):
     """将JdCPSProductItem类型的item插入mongo库"""
 

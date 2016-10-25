@@ -4,20 +4,7 @@ import mysql.connector
 from itertools import islice
 
 
-def get_categories():
-    """从MySql中获取所有的京东三级类目"""
-    config = {'user': 'root', 'password': 'myroot', 'host': '199.155.122.203', 'database': 'tts_category_predict'}
-    query = "SELECT category_code FROM back_category_other WHERE website='jd.com' AND leaf_flag=1 AND tts_code!=0"
-    conn = mysql.connector.connect(**config)
-    cursor = conn.cursor()
-    cursor.execute(query)
 
-    categories = []
-    for category in cursor:
-        categories.append(category[0].replace('-', ','))
-
-    conn.close()
-    return categories
 
 
 def get_keywords():

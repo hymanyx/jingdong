@@ -46,9 +46,9 @@ class RandomHttpProxyMiddleware(object):
 
     def process_request(self, request, spider):
         meta = request.meta
-        if ('request-type' in meta) and (meta['request-type'] == 'list'):
-            pass
-        else:
+        if ('is_proxy' in meta) and (meta['is_proxy']):
             proxy = self.dynamic_ip.get_proxy()
             if proxy:
                 request.meta['proxy'] = "http://%s:3128" % proxy
+        else:
+            pass
