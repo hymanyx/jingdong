@@ -64,7 +64,7 @@ class ProductSpider(scrapy.Spider):
         for category_code, category_name in categories.iteritems():
             url = 'http://list.jd.com/list.html?cat=' + category_code
             meta = {
-                'category_code': category_code,
+                'category_code': category_code.replace('-', ','),
                 'category_name': category_name.replace('-', ','),
                 'is_proxy': False,
                 'page_index': 1,  # 当前页面索引号
