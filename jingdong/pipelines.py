@@ -14,7 +14,7 @@ from scrapy.exceptions import DropItem
 
 
 class JingdongPipeline(object):
-    """将JdCategoryItem类型的item写入文件, 将JdProductItem类型的item插入mongo库"""
+    """将JdProductItem类型的item插入mongo库"""
 
     def __init__(self, mongo_uri, mongo_db, mongo_collection, failure_file):
         self.client = pymongo.MongoClient(mongo_uri)
@@ -48,7 +48,7 @@ class JingdongPipeline(object):
         if self.item_filter.add(spid):
             raise DropItem("Duplicated product item: %d" % spid)
         else:
-            if len(self.product_items) >= 1000:
+            if len(self.product_items) >= 2000:
                 # 收集到2000个item, 则批量插入
                 self.total_items += len(self.product_items)
                 self.collection.insert_many(self.product_items)

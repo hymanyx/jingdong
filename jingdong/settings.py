@@ -14,6 +14,10 @@ BOT_NAME = 'jingdong'
 SPIDER_MODULES = ['jingdong.spiders']
 NEWSPIDER_MODULE = 'jingdong.spiders'
 
+# Logging
+LOG_LEVEL = 'INFO'
+LOG_FILE = '/tmp/scrapy.log.20161025'
+
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'jingdong (+http://www.yourdomain.com)'
 
@@ -91,10 +95,6 @@ NEWSPIDER_MODULE = 'jingdong.spiders'
 # MONGO_DATABASE = 'jingdong'
 # MONGO_COLLECTION = 'product_info_20161008'
 # FAILURE_FILE = './failure_20161008.json'
-
-# Logging
-LOG_LEVEL = 'INFO'
-# LOG_FILE = '/tmp/log_scrapy.log.20161020'
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html
