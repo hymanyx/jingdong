@@ -196,6 +196,7 @@ class ProductSpider(scrapy.Spider):
         if len(prices) != len(product_items):
             self.logger.error(
                 "get product prices error, we should get %d, but actually get %d - %s" % (len(product_items), len(prices), response.url))
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment)
         else:
             # 所有下架商品在product_items中的位置下表
             indexs = []
@@ -217,17 +218,18 @@ class ProductSpider(scrapy.Spider):
             for index in indexs[::-1]:
                 product_items.pop(index)
 
-        # 构造商品评论请求
-        spids = [product_item['spid'] for product_item in product_items]
-        comment_url = 'http://club.jd.com/comment/productCommentSummaries.action?my=pinglun&referenceIds=' + ','.join(spids)
-        meta['product_items'] = product_items
-        yield scrapy.Request(url=comment_url, meta=meta, callback=self.parse_comment)
+            # 构造商品评论请求
+            spids = [product_item['spid'] for product_item in product_items]
+            comment_url = 'http://club.jd.com/comment/productCommentSummaries.action?my=pinglun&referenceIds=' + ','.join(spids)
+            meta['product_items'] = product_items
+            yield scrapy.Request(url=comment_url, meta=meta, callback=self.parse_comment)
 
     def parse_comment(self, response):
         """解析评论
         :param response: parse_price_and_comment函数中comment_url的响应
         """
-        product_items = response.meta['product_items']
+        meta = response.meta
+        product_items = meta['product_items']
 
         # 解析评论
         comments = json.loads(response.body.decode('gbk'))
@@ -235,6 +237,7 @@ class ProductSpider(scrapy.Spider):
         if len(comments) != len(product_items):
             self.logger.error(
                 "get product comments error, we should get %d, but actually get %d - %s" % (len(product_items), len(comments), response.url))
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment)
         else:
             for index, comment in enumerate(comments):
                 product_items[index]['volume'] = comment['CommentCount']         # 商品评论数
@@ -245,6 +248,6 @@ class ProductSpider(scrapy.Spider):
                     'poor': str(comment['PoorRateShow']) + '%'
                 }
 
-        # yield所有product_item
-        for product_item in product_items:
-            yield product_item
+            # yield所有product_item
+            for product_item in product_items:
+                yield product_item
