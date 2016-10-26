@@ -27,8 +27,8 @@ def get_categories():
     return categories
 
 
-class ProductSpider(scrapy.Spider):
-    name = "product_spider"
+class CategorySpider(scrapy.Spider):
+    name = "category_spider"
     start_urls = []
     filter = ScalableBloomFilter(mode=ScalableBloomFilter.LARGE_SET_GROWTH)
     custom_settings = {
