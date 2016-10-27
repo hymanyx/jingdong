@@ -5,7 +5,7 @@ import json
 import scrapy
 import datetime
 import mysql.connector
-from jingdong.items import JdProductItem
+from jingdong.items import JingdongProductItem
 from pybloom import ScalableBloomFilter
 from scrapy.exceptions import DropItem
 
@@ -21,6 +21,8 @@ def get_categories():
 
     categories = {}
     for category_code, category_name in cursor:
+        category_code = category_code.replace('-', ',')
+        category_name = category_name.replace('-', ',')
         categories[category_code] = category_name
 
     conn.close()
@@ -64,8 +66,8 @@ class CategorySpider(scrapy.Spider):
         for category_code, category_name in categories.iteritems():
             url = 'http://list.jd.com/list.html?cat=' + category_code
             meta = {
-                'category_code': category_code.replace('-', ','),
-                'category_name': category_name.replace('-', ','),
+                'category_code': category_code,
+                'category_name': category_name,
                 'is_proxy': False,
                 'page_index': 1,  # 当前页面索引号
                 'parsed_product_num': 0,  # 解析出的商品总数
@@ -146,7 +148,7 @@ class CategorySpider(scrapy.Spider):
         product_items = []  # 元素类型为JdProductItem, 表示一个selector中解析出的所有商品(包括主商品和slave商品)
 
         # 解析出主商品
-        main_product_item = JdProductItem()
+        main_product_item = JingdongProductItem()
         try:
             # 从页面中解析主商品信息
             main_product_item['cid'] = cid
@@ -159,6 +161,7 @@ class CategorySpider(scrapy.Spider):
             imageUrl2 = selector.xpath('div[@class="p-img"]/a/img/@data-lazy-img').extract()
             main_product_item['imageUrl'] = (imageUrl1 if imageUrl1 else imageUrl2)[0]
             main_product_item['website'] = 'jd.com'
+            main_product_item['isCPS'] = False
         except Exception as e:
             self.logger.error("parse product item error in list page: %s, %s, %s" % (list_url, e, main_product_item))
             return None
@@ -171,7 +174,7 @@ class CategorySpider(scrapy.Spider):
         if spid in all_slave_products.keys():
             for slave_products in all_slave_products[spid]:
                 for (slave_spid, slave_product) in slave_products.items():
-                    slave_product_item = JdProductItem()
+                    slave_product_item = JingdongProductItem()
                     slave_product_item['cid'] = cid
                     slave_product_item['spid'] = slave_spid
                     slave_product_item['title'] = (slave_product['name'] if slave_product['name'] else main_product_item['title'])
@@ -179,6 +182,7 @@ class CategorySpider(scrapy.Spider):
                     slave_product_item['imageUrl'] = 'http://img14.360buyimg.com/n1/' + slave_product['imageUrl']
                     slave_product_item['nick'] = main_product_item['nick']
                     slave_product_item['website'] = 'jd.com'
+                    slave_product_item['isCPS'] = False
                     product_items.append(slave_product_item)
 
         # 返回所有主从商品
