@@ -3,8 +3,8 @@
 该程序通过分析昨天的ttk_shown日志，从中获取到未采集的京东商品spid, 通过爬详情页的方式采集商品.
 
 TODO:
-    1. 由于我们一个一个的采详情页, 收集product_item到batch_product_items, 收集到100个时才批量获取价格。这样就会产生一个问题:
-       当爬虫结束时, 如果batch_product_items没有收集到100个, 那么batch_product_items中的商品就会被丢弃。
+    1. 由于我们一个一个的采详情页, 收集product_item到batch_product_items, 收集到50个时才批量获取价格。这样就会产生一个问题:
+       当爬虫结束时, 如果batch_product_items没有收集到50个, 那么batch_product_items中的商品就会被丢弃。
 """
 
 import scrapy
@@ -123,7 +123,7 @@ class LogSpider(scrapy.Spider):
                 pass
             else:
                 url = 'https://item.jd.com/{0:s}.html'.format(spid)
-                meta = {'is_proxy': True, 'spid': spid}
+                meta = {'is_proxy': True, 'spid': spid, 'nick': ''}
                 yield scrapy.Request(url=url, meta=meta, callback=self.parse_detail_page)
 
     def parse_detail_page(self, response):
@@ -133,6 +133,7 @@ class LogSpider(scrapy.Spider):
         # 从页面中解析出一个商品的部分信息
         product_item = JingdongProductItem()
         spid = response.meta['spid']
+        nick = response.meta['nick']
 
         # 网页被重定向
         if spid not in response.url:
@@ -146,8 +147,7 @@ class LogSpider(scrapy.Spider):
 
             # 类目过滤
             if cid not in self.categories.keys():
-                pass
-                # self.logger.error("product %s's category %s is not in mysql" % (spid, cid))
+                self.logger.error("product %s's category %s is not in mysql" % (spid, cid))
             else:
                 try:
                     product_item['cid'] = cid
@@ -171,13 +171,13 @@ class LogSpider(scrapy.Spider):
                     nick2 = response.xpath('//*[@class="crumb-wrap"]/div/div[@class="contact fr clearfix"]/div[1]/div/em/text()').extract()  # 右上
                     nick3 = response.xpath('//*[@id="popbox"]/div/div[1]/h3/a/@title').extract()     # 左边
                     nick4 = response.xpath('//*[@id="extInfo"]/div[@class="seller-infor"]/em/text()').extract() # 右边
-                    nick = nick1
+                    nick = (nick1 if nick1 else nick)
                     nick = (nick2 if nick2 else nick)
                     nick = (nick3 if nick3 else nick)
                     nick = (nick4 if nick4 else nick)
                     product_item['nick'] = nick[0]
 
-                    if len(self.batch_product_items) < 100:
+                    if len(self.batch_product_items) < 50:
                         self.batch_product_items.append(product_item)
                     else:
                         spids = [item['spid'] for item in self.batch_product_items]
