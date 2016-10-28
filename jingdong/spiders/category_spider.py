@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-
+"""
+该程序按类目分别采集京东List页，从中获取到未采集的京东商品信息, 再通过异步请求获取价格评论等信息.
+"""
 import ast
 import json
 import scrapy
