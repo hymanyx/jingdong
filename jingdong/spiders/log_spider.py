@@ -182,7 +182,7 @@ class LogSpider(scrapy.Spider):
                     else:
                         spids = [item['spid'] for item in self.batch_product_items]
                         price_url = 'http://p.3.cn/prices/mgets?type=1&skuIds=J_' + ',J_'.join(spids)
-                        meta = {'is_proxy': True, 'product_items': self.batch_product_items}
+                        meta = {'is_proxy': True, 'product_items': self.batch_product_items, 'retry': 0}
                         self.batch_product_items = []
                         yield scrapy.Request(url=price_url, meta=meta, callback=self.parse_price_and_comment)
                 except Exception, e:
@@ -199,7 +199,8 @@ class LogSpider(scrapy.Spider):
         prices = json.loads(response.body)
         if len(prices) != len(product_items):
             self.logger.error(
-                "get product prices error, we should get %d, but actually get %d - %s" % (len(product_items), len(prices), response.url))
+                "retry: %s. get product prices error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(prices), response.url))
+            meta['retry'] += 1
             yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment)
         else:
             # 所有下架商品在product_items中的位置下表
@@ -226,6 +227,7 @@ class LogSpider(scrapy.Spider):
             spids = [product_item['spid'] for product_item in product_items]
             comment_url = 'http://club.jd.com/comment/productCommentSummaries.action?my=pinglun&referenceIds=' + ','.join(spids)
             meta['product_items'] = product_items
+            meta['retry'] = 0
             yield scrapy.Request(url=comment_url, meta=meta, callback=self.parse_comment)
 
     def parse_comment(self, response):
@@ -240,7 +242,8 @@ class LogSpider(scrapy.Spider):
         comments = comments['CommentsCount']
         if len(comments) != len(product_items):
             self.logger.error(
-                "get product comments error, we should get %d, but actually get %d - %s" % (len(product_items), len(comments), response.url))
+                "retry: %s. get product comments error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(comments), response.url))
+            meta['retry'] += 1
             yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment)
         else:
             for index, comment in enumerate(comments):

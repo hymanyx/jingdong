@@ -127,7 +127,7 @@ class CategorySpider(scrapy.Spider):
         for partial_product_items in [product_items[i:i + 100] for i in range(0, len(product_items), 100)]:
             spids = [product_item['spid'] for product_item in partial_product_items]
             price_url = 'http://p.3.cn/prices/mgets?type=1&skuIds=J_' + ',J_'.join(spids)
-            meta = {'is_proxy': True, 'product_items': partial_product_items}
+            meta = {'is_proxy': True, 'product_items': partial_product_items, 'retry': 0}
             yield scrapy.Request(url=price_url, meta=meta, callback=self.parse_price_and_comment)
 
         # 够造下一个List页请求
@@ -191,8 +191,8 @@ class CategorySpider(scrapy.Spider):
         return product_items
 
     def parse_price_and_comment(self, response):
-        """解析评论及价格
-        :param response: parse_list函数中的price_url的响应
+        """解析价格, 并构造获取评论的请求
+        :param response: parse函数中的price_url的响应
         """
         meta = response.meta
         product_items = meta['product_items']
@@ -201,7 +201,8 @@ class CategorySpider(scrapy.Spider):
         prices = json.loads(response.body)
         if len(prices) != len(product_items):
             self.logger.error(
-                "get product prices error, we should get %d, but actually get %d - %s" % (len(product_items), len(prices), response.url))
+                "retry: %s. get product prices error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(prices), response.url))
+            meta['retry'] += 1
             yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment)
         else:
             # 所有下架商品在product_items中的位置下表
@@ -213,8 +214,8 @@ class CategorySpider(scrapy.Spider):
                 promotion_price = int(float(price['p']) * 100)  # 促销价
                 original_price = int(float(price['m']) * 100)  # 原价
                 if (0 >= promotion_price) or (0 >= original_price):
-                    self.logger.error("product %s's price error: promotion price (%s), original price(%s)" % (
-                        spid, promotion_price, original_price))
+                    self.logger.error("product %s's price error: promotion price (%s), original price(%s), %s" % (
+                        spid, promotion_price, original_price, product_items[index]['url']))
                     indexs.append(index)
                 else:
                     product_items[index]['promoPrice'] = promotion_price
@@ -228,6 +229,7 @@ class CategorySpider(scrapy.Spider):
             spids = [product_item['spid'] for product_item in product_items]
             comment_url = 'http://club.jd.com/comment/productCommentSummaries.action?my=pinglun&referenceIds=' + ','.join(spids)
             meta['product_items'] = product_items
+            meta['retry'] = 0
             yield scrapy.Request(url=comment_url, meta=meta, callback=self.parse_comment)
 
     def parse_comment(self, response):
@@ -242,7 +244,8 @@ class CategorySpider(scrapy.Spider):
         comments = comments['CommentsCount']
         if len(comments) != len(product_items):
             self.logger.error(
-                "get product comments error, we should get %d, but actually get %d - %s" % (len(product_items), len(comments), response.url))
+                "retry: %s. get product comments error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(comments), response.url))
+            meta['retry'] += 1
             yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment)
         else:
             for index, comment in enumerate(comments):
