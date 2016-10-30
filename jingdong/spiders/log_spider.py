@@ -40,8 +40,10 @@ def get_spids():
     """获取前一天ttk_shown日志中所有未采集的京东商品spid
     """
     # 删除上次意外终止时残留的ttk_shown日志
-    child = subprocess.Popen(['/bin/rm', '-rf', 'ttk_shown.log.*'])
-    child.wait()
+    files = glob.glob('/tmp/ttk_show/ttk_shown.log.*.log')
+    for file in files:
+        child = subprocess.Popen(['/bin/rm', '-rf', file])
+        child.wait()
 
     # 获取昨天的ttk_shown日志
     yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
@@ -52,14 +54,12 @@ def get_spids():
             i) + '/ttk_shown.log.*.log'
         child = subprocess.Popen(['hdfs', 'dfs', '-get', log_file, '/tmp/ttk_show'])
         child.wait()
-
-        # 获取下载到本地的ttk_shown的文件路径
-        files = glob.glob('/tmp/ttk_show/ttk_shown.log.*.log')
-
-        # 在日志中获取未采集的京东商品spid
         print "current ttk_shown log: ", log_file
+
+        # 获取下载到本地的ttk_shown的文件路径, 在日志中获取未采集的京东商品spid
+        files = glob.glob('/tmp/ttk_show/ttk_shown.log.*.log')
         with open(files[0], 'r') as fin:
-            for line in fin:
+            for i, line in enumerate(fin):
                 log = {}
                 try:
                     log = json.loads(line.split('\t')[1])
@@ -68,7 +68,7 @@ def get_spids():
                             spids.add(log['spid'])
                             yield log['spid']
                 except Exception as e:
-                    print e, log_file, line
+                    print "parse %sth line error(%s) in file \"%s\", \"%s\"" % (i + 1, e, log_file, line)
 
         # 删除下载到本地的ttk_shown日志
         child = subprocess.Popen(['/bin/rm', '-rf', files[0]])

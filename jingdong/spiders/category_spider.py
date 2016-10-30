@@ -58,7 +58,6 @@ class CategorySpider(scrapy.Spider):
         'MONGO_URI': '199.155.122.196:27017',
         'MONGO_DATABASE': 'jingdong',
         'MONGO_COLLECTION': 'product_info_' + datetime.datetime.now().strftime("%Y%m%d"),
-        'FAILURE_FILE': './failure_' + datetime.datetime.now().strftime("%Y%m%d")
     }
 
     def start_requests(self):
