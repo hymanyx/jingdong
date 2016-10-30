@@ -39,10 +39,13 @@ def get_categories():
 def get_spids():
     """获取前一天ttk_shown日志中所有未采集的京东商品spid
     """
+    # ttk_show日志本地存储路径
+    path = '/tmp'
+
     # 删除上次意外终止时残留的ttk_shown日志
-    files = glob.glob('/tmp/ttk_show/ttk_shown.log.*.log')
-    for file in files:
-        child = subprocess.Popen(['/bin/rm', '-rf', file])
+    local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
+    for local_log in local_logs:
+        child = subprocess.Popen(['/bin/rm', '-rf', local_log])
         child.wait()
 
     # 获取昨天的ttk_shown日志
@@ -50,15 +53,14 @@ def get_spids():
     spids = set()
     for i in xrange(24):
         # 下载HDFS上的ttk_shown日志到本地
-        log_file = '/logs/flume-logs/ttk/ttk_shown/' + yesterday + '/' + yesterday + '-{0:02d}'.format(
-            i) + '/ttk_shown.log.*.log'
-        child = subprocess.Popen(['hdfs', 'dfs', '-get', log_file, '/tmp/ttk_show'])
+        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(yesterday, i)
+        local_log = '{0:s}/ttk_shown.log.{1:s}-{2:02d}.log'.format(path, yesterday, i)
+        child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, local_log])
         child.wait()
-        print "current ttk_shown log: ", log_file
+        print "current ttk_shown log: ", local_log
 
         # 获取下载到本地的ttk_shown的文件路径, 在日志中获取未采集的京东商品spid
-        files = glob.glob('/tmp/ttk_show/ttk_shown.log.*.log')
-        with open(files[0], 'r') as fin:
+        with open(local_log, 'r') as fin:
             for i, line in enumerate(fin):
                 log = {}
                 try:
@@ -68,10 +70,10 @@ def get_spids():
                             spids.add(log['spid'])
                             yield log['spid']
                 except Exception as e:
-                    print "parse %sth line error(%s) in file \"%s\", \"%s\"" % (i + 1, e, log_file, line)
+                    print "parse %sth line error(%s) in file \"%s\", \"%s\"" % (i + 1, e, local_log, line)
 
         # 删除下载到本地的ttk_shown日志
-        child = subprocess.Popen(['/bin/rm', '-rf', files[0]])
+        child = subprocess.Popen(['/bin/rm', '-rf', local_log])
         child.wait()
 
 
