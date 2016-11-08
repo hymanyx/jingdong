@@ -20,8 +20,6 @@ class JingdongPipeline(object):
         self.total_items = 0
         self.logger = logging.getLogger(__name__)
 
-        self.collection.create_index([("spid", pymongo.ASCENDING)], unique=True, background=True)
-
     @classmethod
     def from_crawler(cls, crawler):
         return cls(
