@@ -15,7 +15,7 @@ SPIDER_MODULES = ['jingdong.spiders']
 NEWSPIDER_MODULE = 'jingdong.spiders'
 
 # Logging
-# LOG_LEVEL = 'INFO'
+LOG_LEVEL = 'INFO'
 # LOG_FILE = '/tmp/log_spider.xxxxxxxx.log'
 # LOG_FILE = '/tmp/cps_spider.xxxxxxxx.log'
 # LOG_FILE = '/tmp/category_spider.xxxxxxxx.log'
