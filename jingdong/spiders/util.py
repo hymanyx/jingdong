@@ -1,33 +1,38 @@
 # -*- coding: utf-8 -*-
 
 import mysql.connector
-from itertools import islice
 
 
-
-
-
-def get_keywords():
-    """从MySQL中获取所有的淘宝热词"""
-    config = {'user': 'root', 'password': 'myroot', 'host': '199.155.122.203', 'database': 'tts_spider_cps'}
-    query = "SELECT keyword FROM t_spider_hot_keyword_temp"
+def get_categories():
+    """从MySql中获取所有的京东三级类目"""
+    config = {'user': 'predictwr', 'password': 'Wrk7predict32K8qpWR', 'host': '192.168.3.58',
+              'database': 'tts_category_predict'}
+    query = "SELECT category_code, category_name FROM back_category_other WHERE website='jd.com' AND collect_flag=1"
     conn = mysql.connector.connect(**config)
     cursor = conn.cursor()
     cursor.execute(query)
 
-    keywords = []
-    for keyword in cursor:
-        keywords.append(keyword[0])
+    categories = {}
+    for category_code, category_name in cursor:
+        category_code = category_code.replace('-', ',')
+        category_name = category_name.replace('-', ',')
+        categories[category_code] = category_name
 
     conn.close()
-    return keywords
+    return categories
 
 
-def split_dict(my_dict, max_size_of_sub_dict):
-    """将一个python字典分割成多个小字典, 且每个小字典的元素数量不多于max_size_of_sub_dict
-    :param my_dict: 待分割的python字典
-    :param max_size_of_sub_dict：小字典中的最大元素数
-    """
-    it = iter(my_dict)
-    for i in xrange(0, len(my_dict), max_size_of_sub_dict):
-        yield {key: my_dict[key] for key in islice(it, max_size_of_sub_dict)}
+# def get_keywords():
+#     """从MySQL中获取所有的淘宝热词"""
+#     config = {'user': 'root', 'password': 'myroot', 'host': '199.155.122.203', 'database': 'tts_spider_cps'}
+#     query = "SELECT keyword FROM t_spider_hot_keyword_temp"
+#     conn = mysql.connector.connect(**config)
+#     cursor = conn.cursor()
+#     cursor.execute(query)
+#
+#     keywords = []
+#     for keyword in cursor:
+#         keywords.append(keyword[0])
+#
+#     conn.close()
+#     return keywords

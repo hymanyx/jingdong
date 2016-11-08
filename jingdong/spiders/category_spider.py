@@ -6,29 +6,10 @@ import ast
 import json
 import scrapy
 import datetime
-import mysql.connector
 from jingdong.items import JingdongProductItem
 from pybloom import ScalableBloomFilter
 from scrapy.exceptions import DropItem
-
-
-def get_categories():
-    """从MySql中获取所有的京东三级类目"""
-    config = {'user': 'predictwr', 'password': 'Wrk7predict32K8qpWR', 'host': '192.168.3.57',
-              'database': 'tts_category_predict'}
-    query = "SELECT category_code, category_name FROM back_category_other WHERE website='jd.com' AND collect_flag=1"
-    conn = mysql.connector.connect(**config)
-    cursor = conn.cursor()
-    cursor.execute(query)
-
-    categories = {}
-    for category_code, category_name in cursor:
-        category_code = category_code.replace('-', ',')
-        category_name = category_name.replace('-', ',')
-        categories[category_code] = category_name
-
-    conn.close()
-    return categories
+from jingdong.spiders.util import get_categories
 
 
 class CategorySpider(scrapy.Spider):
@@ -123,10 +104,10 @@ class CategorySpider(scrapy.Spider):
         response.meta['parsed_product_num'], total_product_num, response.meta['category_code'], response.meta['category_name']))
 
         # 够造商品价格链接, 并获取价格(需要注意的是,每次最多只能获取100个商品的价格,故我在这里分割了product_items)
-        for partial_product_items in [product_items[i:i + 100] for i in range(0, len(product_items), 100)]:
-            spids = [product_item['spid'] for product_item in partial_product_items]
+        for i in range(0, len(product_items), 100):
+            spids = [product_item['spid'] for product_item in product_items[i:i+100]]
             price_url = 'http://p.3.cn/prices/mgets?type=1&skuIds=J_' + ',J_'.join(spids)
-            meta = {'is_proxy': True, 'product_items': partial_product_items, 'retry': 0}
+            meta = {'is_proxy': True, 'product_items': product_items[i:i+100], 'retry': 0}
             yield scrapy.Request(url=price_url, meta=meta, callback=self.parse_price_and_comment)
 
         # 够造下一个List页请求
@@ -202,7 +183,7 @@ class CategorySpider(scrapy.Spider):
             self.logger.error(
                 "retry: %s. get product prices error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(prices), response.url))
             meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment)
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment, dont_filter=True)
         else:
             # 所有下架商品在product_items中的位置下表
             indexs = []
@@ -245,7 +226,7 @@ class CategorySpider(scrapy.Spider):
             self.logger.error(
                 "retry: %s. get product comments error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(comments), response.url))
             meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment)
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment, dont_filter=True)
         else:
             for index, comment in enumerate(comments):
                 product_items[index]['volume'] = comment['CommentCount']         # 商品评论数

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-该程序通过分析昨天的ttk_shown日志，从中获取到未采集的京东商品spid, 通过爬详情页的方式采集商品.
+该程序通过分析今天的ttk_shown日志，从中获取到未采集的京东商品spid, 通过爬详情页的方式采集商品.
 
 TODO:
     1. 由于我们一个一个的采详情页, 收集product_item到batch_product_items, 收集到50个时才批量获取价格。这样就会产生一个问题:
@@ -12,35 +12,20 @@ import subprocess
 import datetime
 import glob
 import json
-import mysql.connector
 from pybloom import ScalableBloomFilter
 from jingdong.items import JingdongProductItem
+from jingdong.spiders.util import get_categories
 
-
-def get_categories():
-    """从MySql中获取所有的京东三级类目"""
-    config = {'user': 'predictwr', 'password': 'Wrk7predict32K8qpWR', 'host': '192.168.3.57',
-              'database': 'tts_category_predict'}
-    query = "SELECT category_code, category_name FROM back_category_other WHERE website='jd.com' AND collect_flag=1"
-    conn = mysql.connector.connect(**config)
-    cursor = conn.cursor()
-    cursor.execute(query)
-
-    categories = {}
-    for category_code, category_name in cursor:
-        category_code = category_code.replace('-', ',')
-        category_name = category_name.replace('-', ',')
-        categories[category_code] = category_name
-
-    conn.close()
-    return categories
-
+# 待下载日志的时间
+yestoday = datetime.datetime.now() - datetime.timedelta(days=1)
+log_date = yestoday.strftime("%Y-%m-%d")
+mongo_date = yestoday.strftime("%Y%m%d")
 
 def get_spids():
     """获取前一天ttk_shown日志中所有未采集的京东商品spid
     """
     # ttk_show日志本地存储路径
-    path = '/tmp'
+    path = '/tmp/ttk_shown/ttk_shown_1'
 
     # 删除上次意外终止时残留的ttk_shown日志
     local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
@@ -48,37 +33,34 @@ def get_spids():
         child = subprocess.Popen(['/bin/rm', '-rf', local_log])
         child.wait()
 
-    # 获取昨天的ttk_shown日志
-    yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    spids = set()
-    for i in xrange(24):
+    # 获取昨天0, 4, 8, 12, 16, 20点共6个小时的ttk_shown日志
+    for hour in xrange(0, 24, 4):
         # 下载HDFS上的ttk_shown日志到本地
-        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(yesterday, i)
-        local_log = '{0:s}/ttk_shown.log.{1:s}-{2:02d}.log'.format(path, yesterday, i)
-        child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, local_log])
+        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(log_date, hour)
+        child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, path])
         child.wait()
-        print "current ttk_shown log: ", local_log
 
-        # 获取下载到本地的ttk_shown的文件路径, 在日志中获取未采集的京东商品spid
-        with open(local_log, 'r') as fin:
-            for i, line in enumerate(fin):
-                log = {}
-                try:
-                    log = json.loads(line.split('\t')[1])
-                    if (log['website'] == 'jd.com') and (log['stored'] == 0) and (log['spid'].isdigit()):
-                        if log['spid'] not in spids:
-                            spids.add(log['spid'])
+        # 解析本地的ttk_show日志获取未采集的京东商品spid (NOTE: spid未去重)
+        local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
+        for local_log in local_logs:
+            # 解析本地ttk_shown日志
+            print "current ttk_shown log: [{0:s}-{1:02d}, {2:s}]".format(log_date, hour, local_log)
+            with open(local_log, 'r') as fin:
+                for i, line in enumerate(fin):
+                    try:
+                        log = json.loads(line.split('\t')[1])
+                        if (log['website'] == 'jd.com') and (log['stored'] == 0) and (log['spid'].isdigit()):
                             yield log['spid']
-                except Exception as e:
-                    print "parse %sth line error(%s) in file \"%s\", \"%s\"" % (i + 1, e, local_log, line)
+                    except Exception as e:
+                        print "parse {0:d}th line error in ttk_shown log [{1:s}-{2:02d}, {3:s}], {4:s}"\
+                            .format(i + 1, log_date, hour, local_log, line)
+            # 删除本地ttk_shown日志
+            child = subprocess.Popen(['/bin/rm', '-rf', local_log])
+            child.wait()
 
-        # 删除下载到本地的ttk_shown日志
-        child = subprocess.Popen(['/bin/rm', '-rf', local_log])
-        child.wait()
 
-
-class LogSpider(scrapy.Spider):
-    name = "log_spider"
+class LogSpider1(scrapy.Spider):
+    name = "log_spider_1"
     start_urls = []
 
     custom_settings = {
@@ -103,15 +85,16 @@ class LogSpider(scrapy.Spider):
         },
         'MONGO_URI': '199.155.122.32:27018',
         'MONGO_DATABASE': 'jingdong',
-        'MONGO_COLLECTION': 'log_product_info_' + (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y%m%d"),
+        'MONGO_COLLECTION': 'log_product_info_' + mongo_date,
     }
+
     filter = ScalableBloomFilter(mode=ScalableBloomFilter.LARGE_SET_GROWTH)
     categories = get_categories()
     batch_product_items = []
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
-        spider = super(LogSpider, cls).from_crawler(crawler, *args, **kwargs)
+        spider = super(LogSpider1, cls).from_crawler(crawler, *args, **kwargs)
         crawler.signals.connect(spider.spider_closed, signal=scrapy.signals.spider_closed)
         return spider
 
@@ -203,7 +186,7 @@ class LogSpider(scrapy.Spider):
             self.logger.error(
                 "retry: %s. get product prices error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(prices), response.url))
             meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment)
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment, dont_filter=True)
         else:
             # 所有下架商品在product_items中的位置下表
             indexs = []
@@ -246,7 +229,7 @@ class LogSpider(scrapy.Spider):
             self.logger.error(
                 "retry: %s. get product comments error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(comments), response.url))
             meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment)
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment, dont_filter=True)
         else:
             for index, comment in enumerate(comments):
                 product_items[index]['volume'] = comment['CommentCount']         # 商品评论数

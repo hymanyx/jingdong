@@ -9,29 +9,10 @@ TODO:
 
 import json
 import scrapy
-import mysql.connector
 import datetime
 from pybloom import ScalableBloomFilter
 from jingdong.items import JingdongProductItem
-
-
-def get_categories():
-    """从MySql中获取所有的京东三级类目"""
-    config = {'user': 'predictwr', 'password': 'Wrk7predict32K8qpWR', 'host': '192.168.3.57',
-              'database': 'tts_category_predict'}
-    query = "SELECT category_code, category_name FROM back_category_other WHERE website='jd.com' AND collect_flag=1"
-    conn = mysql.connector.connect(**config)
-    cursor = conn.cursor()
-    cursor.execute(query)
-
-    categories = {}
-    for category_code, category_name in cursor:
-        category_code = category_code.replace('-', ',')
-        category_name = category_name.replace('-', ',')
-        categories[category_code] = category_name
-
-    conn.close()
-    return categories
+from jingdong.spiders.util import get_categories
 
 
 def make_url(pageIndex=1, pageSize=50, property='pcPrice', sort='desc', adownerType='',pcRate='',
@@ -188,15 +169,14 @@ class CPSSpider(scrapy.Spider):
             pc_price = response.xpath('//*[@id="container"]/div[2]/div[2]/div[4]/table/tbody/tr[1]/td[2]/text()').extract()[0]
             pc_price = pc_price.replace(u'\r\n', '').replace(u' ', '').replace(u'￥', '').replace(u'PC：', '').replace(',', '')
 
-            # 当前价格区间
-            from_price = 0
-            to_price = int(float(pc_price) + 1)    # 加1是因为float转int会损失精度
-
             # 为该二级类目构造带有价格区间的多个请求
-            prices = [from_price, to_price]
+            from_price = 0.00
+            to_price = round(float(pc_price), 2)
+            middle_price = round((from_price + to_price) / 2, 2)
+            prices = [from_price, middle_price, to_price]
             for i in range(len(prices) - 1):
-                meta['fromPrice'] = str(prices[i] + 0.01)
-                meta['toPrice'] = str(prices[i + 1] + 0.0)
+                meta['fromPrice'] = str(prices[i])
+                meta['toPrice'] = str(prices[i + 1])
                 url = make_url(**meta)
                 yield scrapy.Request(url=url, headers=self.headers, meta=meta, callback=self.parse_list_page)
 
@@ -222,23 +202,23 @@ class CPSSpider(scrapy.Spider):
             page_num = int(page_num)
 
             # 从response.meta中获取当前页面的价格区间
-            from_price = int(meta['fromPrice'][:-3])
-            to_price = int(meta['toPrice'][:-2])
-            price_interval = to_price - from_price
+            from_price = float(meta['fromPrice'])
+            to_price = float(meta['toPrice'])
+            price_interval = round(to_price - from_price, 2)
 
             # 页面总数大于100, 但价格区间不是最小的情况: 以更小的价格区间获取页面
-            if (page_num > 100) and (price_interval > 1):
-                prices = [i for i in range(from_price, to_price, price_interval / 2)]
-                prices.append(to_price)
+            if (page_num > 100) and (price_interval >= 1.0):
+                middle_price = round((from_price + to_price) / 2, 2)
+                prices = [from_price, middle_price, to_price]
                 for i in range(len(prices) - 1):
                     meta['pageIndex'] = 1
-                    meta['fromPrice'] = str(prices[i] + 0.01)
-                    meta['toPrice'] = str(prices[i + 1] + 0.0)
+                    meta['fromPrice'] = str(prices[i])
+                    meta['toPrice'] = str(prices[i + 1])
                     url = make_url(**meta)
                     yield scrapy.Request(url=url, headers=self.headers, meta=meta, callback=self.parse_list_page)
 
             # 页面总数大于100, 价格区间已经最小, pc佣金比例不存在的情况: 以不同的pc佣金比例获取页面
-            if (page_num > 100) and (price_interval == 1) and ('pcRate' not in response.meta):
+            if (page_num > 100) and (price_interval == 1.0) and ('pcRate' not in response.meta):
                 pc_rate_interval = 1                     # PC佣金比率间隔
                 pc_rates = [i for i in range(1, 100, pc_rate_interval)]
                 for pc_rate in pc_rates:
@@ -250,7 +230,7 @@ class CPSSpider(scrapy.Spider):
                     yield scrapy.Request(url=url, headers=self.headers, meta=meta, callback=self.parse_list_page)
 
             # 页面总数大于100, 价格区间已经最小, pc佣金比例也已经存在的情况： 只能获取前100页的商品了, 大于100页的商品实在无能为力了
-            if (page_num > 100) and (price_interval == 1) and ('pcRate' in response.meta):
+            if (page_num > 100) and (price_interval == 1.0) and ('pcRate' in response.meta):
                 self.logger.error("prase first 100 pages: page_num(%d), price_inverval(%d), pc_rate(%s) %s" % (page_num, price_interval, meta['pcRate'], response.url))
                 page_num = 100
 
@@ -269,8 +249,11 @@ class CPSSpider(scrapy.Spider):
                         nick = nick.replace('\r', '').replace('\n', '').replace(' ', '')
 
                         # 解析详情页
-                        detail_meta = {"is_proxy": True, "spid": spid, "nick": nick}
-                        yield scrapy.Request(url=url, meta=detail_meta, callback=self.parse_detail_page)
+                        if self.filter.add(spid):
+                            self.logger.error("Duplicated product spid: {0:s}".format(spid))
+                        else:
+                            detail_meta = {"is_proxy": True, "spid": spid, "nick": nick}
+                            yield scrapy.Request(url=url, meta=detail_meta, callback=self.parse_detail_page)
                     except Exception as e:
                         self.logger.error('parse product error(%s) in page: %s' % (e, response.url))
                         pass
@@ -357,7 +340,7 @@ class CPSSpider(scrapy.Spider):
             self.logger.error(
                 "retry: %s. get product prices error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(prices), response.url))
             meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment)
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment, dont_filter=True)
         else:
             # 所有下架商品在product_items中的位置下表
             indexs = []
@@ -400,7 +383,7 @@ class CPSSpider(scrapy.Spider):
             self.logger.error(
                 "retry: %s. get product comments error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(comments), response.url))
             meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment)
+            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_comment, dont_filter=True)
         else:
             for index, comment in enumerate(comments):
                 product_items[index]['volume'] = comment['CommentCount']         # 商品评论数

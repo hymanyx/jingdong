@@ -15,8 +15,10 @@ SPIDER_MODULES = ['jingdong.spiders']
 NEWSPIDER_MODULE = 'jingdong.spiders'
 
 # Logging
-LOG_LEVEL = 'INFO'
-# LOG_FILE = '/tmp/scrapy.log.20161025'
+# LOG_LEVEL = 'INFO'
+# LOG_FILE = '/tmp/log_spider.xxxxxxxx.log'
+# LOG_FILE = '/tmp/cps_spider.xxxxxxxx.log'
+# LOG_FILE = '/tmp/category_spider.xxxxxxxx.log'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'jingdong (+http://www.yourdomain.com)'
