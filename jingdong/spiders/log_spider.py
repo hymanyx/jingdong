@@ -21,11 +21,12 @@ yestoday = datetime.datetime.now() - datetime.timedelta(days=1)
 log_date = yestoday.strftime("%Y-%m-%d")
 mongo_date = yestoday.strftime("%Y%m%d")
 
+
 def get_spids():
     """获取前一天ttk_shown日志中所有未采集的京东商品spid
     """
     # ttk_show日志本地存储路径
-    path = '/tmp/ttk_shown/ttk_shown_1'
+    path = '/tmp/ttk_shown'
 
     # 删除上次意外终止时残留的ttk_shown日志
     local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
@@ -33,8 +34,8 @@ def get_spids():
         child = subprocess.Popen(['/bin/rm', '-rf', local_log])
         child.wait()
 
-    # 获取昨天0, 4, 8, 12, 16, 20点共6个小时的ttk_shown日志
-    for hour in xrange(0, 24, 4):
+    # 获取昨天24个小时的ttk_shown日志
+    for hour in xrange(0, 24, 1):
         # 下载HDFS上的ttk_shown日志到本地
         hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(log_date, hour)
         child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, path])
@@ -59,8 +60,8 @@ def get_spids():
             child.wait()
 
 
-class LogSpider1(scrapy.Spider):
-    name = "log_spider_1"
+class LogSpider(scrapy.Spider):
+    name = "log_spider"
     start_urls = []
 
     custom_settings = {
@@ -94,7 +95,7 @@ class LogSpider1(scrapy.Spider):
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
-        spider = super(LogSpider1, cls).from_crawler(crawler, *args, **kwargs)
+        spider = super(LogSpider, cls).from_crawler(crawler, *args, **kwargs)
         crawler.signals.connect(spider.spider_closed, signal=scrapy.signals.spider_closed)
         return spider
 
