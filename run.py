@@ -12,5 +12,5 @@ from scrapy.utils.project import get_project_settings
 process = CrawlerProcess(get_project_settings())
 # process.crawl('category_spider')
 # process.crawl('cps_spider')
-process.crawl('log_spider')
+# process.crawl('log_spider')
 process.start()
