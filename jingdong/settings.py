@@ -8,6 +8,7 @@
 #     http://doc.scrapy.org/en/latest/topics/settings.html
 #     http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
 #     http://scrapy.readthedocs.org/en/latest/topics/spider-middleware.html
+import datetime
 
 BOT_NAME = 'jingdong'
 
@@ -16,9 +17,7 @@ NEWSPIDER_MODULE = 'jingdong.spiders'
 
 # Logging
 LOG_LEVEL = 'INFO'
-# LOG_FILE = '/tmp/log_spider.xxxxxxxx.log'
-# LOG_FILE = '/tmp/cps_spider.xxxxxxxx.log'
-# LOG_FILE = '/tmp/category_spider.xxxxxxxx.log'
+LOG_FILE = './log/log_spider.{0:s}.log'.format(datetime.datetime.now().strftime('%Y%m%d'))
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'jingdong (+http://www.yourdomain.com)'

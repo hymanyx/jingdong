@@ -5,9 +5,11 @@
 TODO:
     1. 由于我们一个一个的采详情页, 收集product_item到batch_product_items, 收集到50个时才批量获取价格。这样就会产生一个问题:
        当爬虫结束时, 如果batch_product_items没有收集到50个, 那么batch_product_items中的商品就会被丢弃。
+    2. 在当前的日志量下, 分析一天的日志并采集的时间大概8小时。当日志量更大时，意味着要花更多的时间.
 """
 
 import scrapy
+import os
 import subprocess
 import datetime
 import glob
@@ -26,7 +28,7 @@ def get_spids():
     """获取前一天ttk_shown日志中所有未采集的京东商品spid
     """
     # ttk_show日志本地存储路径
-    path = '/tmp/ttk_shown'
+    path = './ttk_logs'
 
     # 删除上次意外终止时残留的ttk_shown日志
     local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
@@ -53,8 +55,9 @@ def get_spids():
                         if (log['website'] == 'jd.com') and (log['stored'] == 0) and (log['spid'].isdigit()):
                             yield log['spid']
                     except Exception as e:
-                        print "parse {0:d}th line error in ttk_shown log [{1:s}-{2:02d}, {3:s}], {4:s}"\
-                            .format(i + 1, log_date, hour, local_log, line)
+                        # print "parse {0:d}th line error in ttk_shown log [{1:s}-{2:02d}, {3:s}], {4:s}"\
+                        #     .format(i + 1, log_date, hour, local_log, line)
+                        pass
             # 删除本地ttk_shown日志
             child = subprocess.Popen(['/bin/rm', '-rf', local_log])
             child.wait()
@@ -106,6 +109,7 @@ class LogSpider(scrapy.Spider):
         """重载父类的start_request方法"""
         for spid in get_spids():
             if self.filter.add(spid):
+                # self.logger.error("Duplicated product spid: {0:s}".format(spid))
                 pass
             else:
                 url = 'https://item.jd.com/{0:s}.html'.format(spid)
@@ -186,8 +190,9 @@ class LogSpider(scrapy.Spider):
         if len(prices) != len(product_items):
             self.logger.error(
                 "retry: %s. get product prices error, we should get %d, but actually get %d - %s" % (meta['retry'], len(product_items), len(prices), response.url))
-            meta['retry'] += 1
-            yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment, dont_filter=True)
+            if meta['retry'] < 1000:
+                meta['retry'] += 1
+                yield scrapy.Request(url=response.url, meta=meta, callback=self.parse_price_and_comment, dont_filter=True)
         else:
             # 所有下架商品在product_items中的位置下表
             indexs = []
