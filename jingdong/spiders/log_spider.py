@@ -8,6 +8,7 @@ TODO:
     2. 在当前的日志量下, 分析一天的日志并采集的时间大概8小时。当日志量更大时，意味着要花更多的时间.
 """
 
+import sys
 import scrapy
 import subprocess
 import datetime
@@ -20,7 +21,7 @@ from jingdong.spiders.util import get_categories
 # 待下载日志的时间
 today = datetime.datetime.now()
 yestoday = datetime.datetime.now() - datetime.timedelta(days=1)
-time_str = yestoday.strftime("%Y%m%d")
+date = yestoday
 
 
 def get_spids():
@@ -38,7 +39,7 @@ def get_spids():
     # 获取昨天24个小时的ttk_shown日志
     for hour in xrange(0, 24, 1):
         # 下载HDFS上的ttk_shown日志到本地
-        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(time_str, hour)
+        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(date.strftime("%Y-%m-%d"), hour)
         child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, path])
         child.wait()
 
@@ -46,7 +47,8 @@ def get_spids():
         local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
         for local_log in local_logs:
             # 解析本地ttk_shown日志
-            print "current ttk_shown log: [{0:s}-{1:02d}, {2:s}]".format(time_str, hour, local_log)
+            print "current ttk_shown log: [{0:s}-{1:02d}, {2:s}]".format(date.strftime("%Y-%m-%d"), hour, local_log)
+            sys.stdout.flush()
             with open(local_log, 'r') as fin:
                 for i, line in enumerate(fin):
                     try:
@@ -55,7 +57,7 @@ def get_spids():
                             yield log['spid']
                     except Exception as e:
                         # print "parse {0:d}th line error in ttk_shown log [{1:s}-{2:02d}, {3:s}], {4:s}"\
-                        #     .format(i + 1, log_date, hour, local_log, line)
+                        #     .format(i + 1, date.strftime("%Y-%m-%d"), hour, local_log, line)
                         pass
             # 删除本地ttk_shown日志
             child = subprocess.Popen(['/bin/rm', '-rf', local_log])
@@ -88,7 +90,7 @@ class LogSpider(scrapy.Spider):
         },
         'MONGO_URI': '199.155.122.32:27018',
         'MONGO_DATABASE': 'jingdong',
-        'MONGO_COLLECTION': 'log_product_info_' + time_str,
+        'MONGO_COLLECTION': 'log_product_info_' + date.strftime("%Y%m%d"),
     }
 
     filter = ScalableBloomFilter(mode=ScalableBloomFilter.LARGE_SET_GROWTH)
