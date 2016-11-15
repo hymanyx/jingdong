@@ -17,7 +17,7 @@ NEWSPIDER_MODULE = 'jingdong.spiders'
 
 # Logging
 LOG_LEVEL = 'INFO'
-LOG_FILE = './log/log_spider.{0:s}.log'.format(datetime.datetime.now().strftime('%Y%m%d'))
+LOG_FILE = './log/log_spider.{0:s}.log'.format(datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = 'jingdong (+http://www.yourdomain.com)'

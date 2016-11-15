@@ -9,7 +9,6 @@ TODO:
 """
 
 import scrapy
-import os
 import subprocess
 import datetime
 import glob
@@ -19,9 +18,9 @@ from jingdong.items import JingdongProductItem
 from jingdong.spiders.util import get_categories
 
 # 待下载日志的时间
+today = datetime.datetime.now()
 yestoday = datetime.datetime.now() - datetime.timedelta(days=1)
-log_date = yestoday.strftime("%Y-%m-%d")
-mongo_date = yestoday.strftime("%Y%m%d")
+time_str = yestoday.strftime("%Y%m%d")
 
 
 def get_spids():
@@ -39,7 +38,7 @@ def get_spids():
     # 获取昨天24个小时的ttk_shown日志
     for hour in xrange(0, 24, 1):
         # 下载HDFS上的ttk_shown日志到本地
-        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(log_date, hour)
+        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(time_str, hour)
         child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, path])
         child.wait()
 
@@ -47,7 +46,7 @@ def get_spids():
         local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
         for local_log in local_logs:
             # 解析本地ttk_shown日志
-            print "current ttk_shown log: [{0:s}-{1:02d}, {2:s}]".format(log_date, hour, local_log)
+            print "current ttk_shown log: [{0:s}-{1:02d}, {2:s}]".format(time_str, hour, local_log)
             with open(local_log, 'r') as fin:
                 for i, line in enumerate(fin):
                     try:
@@ -89,7 +88,7 @@ class LogSpider(scrapy.Spider):
         },
         'MONGO_URI': '199.155.122.32:27018',
         'MONGO_DATABASE': 'jingdong',
-        'MONGO_COLLECTION': 'log_product_info_' + mongo_date,
+        'MONGO_COLLECTION': 'log_product_info_' + time_str,
     }
 
     filter = ScalableBloomFilter(mode=ScalableBloomFilter.LARGE_SET_GROWTH)
