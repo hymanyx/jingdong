@@ -18,14 +18,14 @@ from pybloom import ScalableBloomFilter
 from jingdong.items import JingdongProductItem
 from jingdong.spiders.util import get_categories
 
-# 待下载日志的时间
+# 待下载ttk_shown日志的时间
 today = datetime.datetime.now()
 yestoday = datetime.datetime.now() - datetime.timedelta(days=1)
-date = yestoday
+date = today
 
 
 def get_spids():
-    """获取前一天ttk_shown日志中所有未采集的京东商品spid
+    """获取某一天ttk_shown日志中所有未采集的京东商品spid
     """
     # ttk_show日志本地存储路径
     path = './ttk_logs'
@@ -36,7 +36,7 @@ def get_spids():
         child = subprocess.Popen(['/bin/rm', '-rf', local_log])
         child.wait()
 
-    # 获取昨天24个小时的ttk_shown日志
+    # 获取某一天24个小时的ttk_shown日志
     for hour in xrange(0, 24, 1):
         # 下载HDFS上的ttk_shown日志到本地
         hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(date.strftime("%Y-%m-%d"),
