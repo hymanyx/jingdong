@@ -39,7 +39,8 @@ def get_spids():
     # 获取昨天24个小时的ttk_shown日志
     for hour in xrange(0, 24, 1):
         # 下载HDFS上的ttk_shown日志到本地
-        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(date.strftime("%Y-%m-%d"), hour)
+        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(date.strftime("%Y-%m-%d"),
+                                                                                                   hour)
         child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, path])
         child.wait()
 
@@ -47,7 +48,10 @@ def get_spids():
         local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
         for local_log in local_logs:
             # 解析本地ttk_shown日志
-            print "current ttk_shown log: [{0:s}-{1:02d}, {2:s}]".format(date.strftime("%Y-%m-%d"), hour, local_log)
+            print "{0:s}: /logs/flume-logs/ttk/ttk_shown/{1:s}/{1:s}-{2:02d}/{3:s}".format(date.strftime("%Y-%m-%d %H:%M:%S"),
+                                                                                           date.strftime("%Y-%m-%d"),
+                                                                                           hour,
+                                                                                           local_log.split('/')[-1])
             sys.stdout.flush()
             with open(local_log, 'r') as fin:
                 for i, line in enumerate(fin):
