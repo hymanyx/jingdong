@@ -3,7 +3,7 @@
     run.py 通过API方式启动spider, run.py启动多个spider时, 多个spider共享一个进程
     run.sh 通过脚本方式启动spider, run.sh启动多个spider时, 每个spider独享一个进程
     
-    需要注意的是, 在一次启动多个spider的情况下, 调试时建议使用run.py, 生产环境部署时建议使用run.sh
+    需要注意的是, 调试时建议使用run.py, 生产环境部署时建议使用run.sh
 
 ## **启动log_spider(一天采集一次)**
     log_spider将今天的ttk_shown日志下载下来,分析日志得出没有采集的京东商品spid, 然后采集这些商品的详情页
