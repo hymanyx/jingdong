@@ -48,7 +48,7 @@ def get_spids():
         local_logs = glob.glob('{0:s}/ttk_shown.log.*.log'.format(path))
         for local_log in local_logs:
             # 解析本地ttk_shown日志
-            print "{0:s}: /logs/flume-logs/ttk/ttk_shown/{1:s}/{1:s}-{2:02d}/{3:s}".format(date.strftime("%Y-%m-%d %H:%M:%S"),
+            print "{0:s}: /logs/flume-logs/ttk/ttk_shown/{1:s}/{1:s}-{2:02d}/{3:s}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                                                                            date.strftime("%Y-%m-%d"),
                                                                                            hour,
                                                                                            local_log.split('/')[-1])
