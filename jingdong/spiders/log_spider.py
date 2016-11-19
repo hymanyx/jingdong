@@ -39,8 +39,7 @@ def get_spids():
     # 获取某一天24个小时的ttk_shown日志
     for hour in xrange(0, 24, 1):
         # 下载HDFS上的ttk_shown日志到本地
-        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(
-            datetime.datetime.now().strftime("%Y-%m-%d"), hour)
+        hdfs_log = '/logs/flume-logs/ttk/ttk_shown/{0:s}/{0:s}-{1:02d}/ttk_shown.log.*.log'.format(date.strftime("%Y-%m-%d"), hour)
         child = subprocess.Popen(['hdfs', 'dfs', '-get', hdfs_log, path])
         child.wait()
 
